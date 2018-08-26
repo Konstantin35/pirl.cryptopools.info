@@ -1,30 +1,4 @@
-## Open Source Callisto (CLO) Mining Pool
-
-![Main page of open-callisto-pool](https://raw.githubusercontent.com/ethpool-update-project/open-callisto-pool/master/misc/pool.PNG)
-
-[![Build Status](https://api.travis-ci.org/ethpool-update-project/open-callisto-pool.svg?branch=master)](https://travis-ci.org/ethpool-update-project/open-callisto-pool)
-[![Report Card](https://goreportcard.com/badge/github.com/ethpool-update-project/open-callisto-pool)](https://goreportcard.com/report/github.com/ethpool-update-project/open-callisto-pool)
-
-### Features  
-
-**This pool is being further developed to provide an easy to use pool for Callisto miners. Testing and bug submissions are welcome!**
-
-* Support for HTTP and Stratum mining
-* Detailed block stats with luck percentage and full reward
-* Failover geth instances: geth high availability built in
-* Modern beautiful Ember.js frontend
-* Separate stats for workers: can highlight timed-out workers so miners can perform maintenance of rigs
-* JSON-API for stats
-* PPLNS block reward
-* Multi-tx payout at once
-* Beautiful front-end highcharts embedded
-
-#### Proxies
-
-* [Ether-Proxy](https://github.com/sammy007/ether-proxy) HTTP proxy with web interface
-* [Stratum Proxy](https://github.com/Atrides/eth-proxy) for Ethereum
-
-## Guide to make your very own Callisto mining pool
+## Open Source Mining Pool
 
 ### Building on Linux
 
@@ -68,68 +42,25 @@ This will install the latest nodejs
     $ unzip multi-geth-linux-v1.8.10.zip
     $ sudo mv geth /usr/local/bin/geth
 
-### Run multi-geth
+### Install  Pool
 
-If you use Ubuntu, it is easier to control services by using serviced.
-
-    $ sudo nano /etc/systemd/system/callisto.service
-
-Copy the following example
-
-```
-[Unit]
-Description=Callisto for Pool
-After=network-online.target
-
-[Service]
-ExecStart=/usr/local/bin/geth --callisto --cache=1024 --rpc --extradata "Mined by <your-pool-domain>" --ethstats "<your-pool-domain>:Callisto@clostats.net"
-User=<your-user-name>
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Then run multi-geth by the following commands
-
-    $ sudo systemctl enable callisto
-    $ sudo systemctl start callisto
-
-If you want to debug the node command
-
-    $ sudo systemctl status callisto
-
-Run console
-
-    $ geth attach
-
-Register pool account and open wallet for transaction. This process is always required, when the wallet node is restarted.
-
-    > personal.newAccount()
-    > personal.unlockAccount(eth.accounts[0],"password",40000000)
-
-### Install Callisto Pool
-
-    $ git clone https://github.com/chainkorea/open-callisto-pool
-    $ cd open-callisto-pool
+    $ git clone https://github.com/phatblinkie/pirl.cryptopools.info.git
+    $ cd pirl.cryptopools.info
     $ make all
+    $ ls build/bin/
 
-If you face open-callisto-pool after ls ~/open-callisto-pool/build/bin/, the installation has completed.
+you should see open-callisto-pool binary there.
 
-    $ ls ~/open-callisto-pool/build/bin/
+### Set up pool
 
-### Set up Callisto pool
-
-    $ mv config.example.json config.json
-    $ nano config.json
-
-Set up based on commands below.
+presetup configs are in configs directory, edit to suit your needs
 
 ```javascript
 {
   // The number of cores of CPU.
   "threads": 2,
   // Prefix for keys in redis store
-  "coin": "clo",
+  "coin": "pirl",
   // Give unique name to each instance
   "name": "main",
   // PPLNS rounds
@@ -317,47 +248,21 @@ Set up based on commands below.
   }
 }
 ```
+### Run the service installer
+    edit the top of the "service_installer.sh"
+//your user you plan to use for the coin, could be the coin name for instance
+user="brian"
+//the name of the coin, used to make the services match the coins name
+coin="pirl"
+//the location of the config files if you moved them
+config_dir="/home/$user/cryptopools.info-pools/configs"
+//the default name of the built pool binary, it will rename it to pirl for you.
+poolbinary="/home/$user/cryptopools.info-pools/build/bin/open-callisto-pool"
 
-If you are distributing your pool deployment to several servers or processes,
-create several configs and disable unneeded modules on each server. (Advanced users)
+   when its edited, run with root user with ./service_installer.sh  or with sudo with sudo ./service_installer
 
-I recommend this deployment strategy:
+(installing services requires root level access)
 
-* Mining instance - 1x (it depends, you can run one node for EU, one for US, one for Asia)
-* Unlocker and payouts instance - 1x each (strict!)
-* API instance - 1x
-
-
-### Run Pool
-It is required to run pool by serviced. If it is not, the terminal could be stopped, and pool doesn’t work.
-
-    $ sudo nano /etc/systemd/system/etherpool.service
-
-Copy the following example
-
-```
-[Unit]
-Description=Etherpool
-After=callisto.target
-
-[Service]
-Type=simple
-ExecStart=/home/<your-user-name>/open-callisto-pool/build/bin/open-callisto-pool /home/<your-user-name>/open-callisto-pool/config.json
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Then run pool by the following commands
-
-    $ sudo systemctl enable etherpool
-    $ sudo systemctl start etherpool
-
-If you want to debug the node command
-
-    $ sudo systemctl status etherpool
-
-Backend operation has completed so far.
 
 ### Open Firewall
 
@@ -368,19 +273,36 @@ You can open firewall by opening 80,443,8080,8888,8008.
 
 ### Modify configuration file
 
-    $ nano ~/open-callisto-pool/www/config/environment.js
+    $ nano pirl.cryptopools.info/www/config/environment.js
 
 Make some modifications in these settings.
 
-    BrowserTitle: 'Callisto Mining Pool',
-    ApiUrl: '//your-pool-domain/',
-    HttpHost: 'http://your-pool-domain',
-    StratumHost: 'your-pool-domain',
-    PoolFee: '1%',
+    APP: {
+      // API host and port
+      ApiUrl: '//pirl.cryptopools.info/',
+      PoolName: 'PIRL Pool',
+      CompanyName: 'CryptoPools.info',
+      // HTTP mining endpoint
+      HttpHost: 'https://Pirl.CryptoPools.info',
+      HttpPort: 8882,
+
+      // Stratum mining endpoint
+      StratumHost: 'Pirl.CryptoPools.info',
+      StratumPort: 8002,
+
+      // Fee and payout details
+      PoolFee: '1.0%',
+      PayoutThreshold: '1.0',
+      PayoutInterval: '3h',
+
+      // For network hashrate (change for your favourite fork)
+      BlockTime: 14.0,
+      BlockReward: 6,
+      Unit: 'PIRL',
 
 The frontend is a single-page Ember.js application that polls the pool API to render miner stats.
 
-    $ cd ~/open-callisto-pool/www
+    $ cd pirl.cryptopools.info/www
     $ sudo npm install -g ember-cli@2.9.1
     $ sudo npm install -g bower
     $ sudo chown -R $USER:$GROUP ~/.npm
@@ -388,12 +310,12 @@ The frontend is a single-page Ember.js application that polls the pool API to re
     $ npm install
     $ bower install
     $ ./build.sh
-    $ cp -R ~/open-callisto-pool/www/dist ~/www
+    $ note: the build script copies the contents of pirl.cryptopools.info/www/dist/ to ~/www
 
 As you can see above, the frontend of the pool homepage is created. Then, move to the directory, www, which services the file.
 
 Set up nginx.
-
+    $ a sample config file for nginx is include in the configs directory copy it or edit as directed below
     $ sudo nano /etc/nginx/sites-available/default
 
 Modify based on configuration file.
@@ -475,7 +397,7 @@ Now you can access your pool's frontend via https! Share your pool link!
 ### Credits
 
 Made by sammy007. Licensed under GPLv3.
-Modified by Akira Takizawa & The Ellaism Project.
+Modified by Akira Takizawa & The Ellaism Project & phatblinkie and mohannad and the ethpool update project.
 
 #### Contributors
 
@@ -483,8 +405,7 @@ Modified by Akira Takizawa & The Ellaism Project.
 
 ### Donations
 
-ETH/ETC/ETSC/CLO: 0x34AE12692BD4567A27e3E86411b58Ea6954BA773
+PIRL or any ethash coin: 0x4bc7b9d69d6454c5666ecad87e5699c1ec02d533
 
-![](https://cdn.pbrd.co/images/GP5tI1D.png)
 
 Highly appreciated.
