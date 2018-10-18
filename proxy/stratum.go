@@ -47,7 +47,7 @@ func (s *ProxyServer) ListenTCP() {
 		if err != nil {
 			continue
 		}
-		conn.SetKeepAlive(true)
+		
 
 		ip, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
 
