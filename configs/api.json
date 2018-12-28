@@ -46,7 +46,7 @@
   "api": {
     "enabled": true,
     "listen": "0.0.0.0:8080",
-    "statsCollectInterval": "5s",
+    "statsCollectInterval": "10s",
     "purgeInterval": "10m",
     "hashrateWindow": "30m",
     "hashrateLargeWindow": "3h",
@@ -54,9 +54,9 @@
     "payments": 50,
     "blocks": 50,
     "poolCharts":"0 */20 * * * *",
-    "poolChartsNum":74,
+    "poolChartsNum":300,
     "minerCharts":"0 */20 * * * *",
-    "minerChartsNum":74,
+    "minerChartsNum":150,
     "purgeOnly": false
   },
 

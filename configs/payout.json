@@ -105,7 +105,7 @@
     "autoGas": true,
     "gas": "21000",
     "gasPrice": "50000000000",
-    "threshold": 1000000000,
+    "threshold": 10000000,
     "bgsave": true,
     "concurrentTx": 5
   }

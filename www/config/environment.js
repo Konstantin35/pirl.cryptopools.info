@@ -32,8 +32,8 @@ module.exports = function(environment) {
       PayoutInterval: '3h',
 
       // For network hashrate (change for your favourite fork)
-      BlockTime: 14.0,
-      BlockReward: 10,
+      BlockTime: 13.0,
+      BlockReward: 6,
       Unit: 'PIRL',
 
     }
