@@ -2,8 +2,8 @@
 #will make the services for the pool, based on the pool exe location of /usr/local/bin/poolbin
 user="pirl"
 coin="pirl"
-config_dir="/home/$user/cryptopools.info-pools/configs"
-poolbinary="/home/$user/cryptopools.info-pools/build/bin/open-callisto-pool"
+config_dir="/home/$user/pirl.cryptopools.info/configs"
+poolbinary="/home/$user/pirl.cryptopools.info/build/bin/open-callisto-pool"
 
 if [ ! -e $config_dir ] || [ ! -e $poolbinary ]
 then
@@ -12,7 +12,7 @@ exit 1
 fi
 
 #rename the callisto binary to pirl
-pirlbinary="/home/$user/cryptopools.info-pools/build/bin/open-pirl-pool"
+pirlbinary="/home/$user/pirl.cryptopools.info/build/bin/open-pirl-pool"
 cp -f $poolbinary $pirlbinary
 
 poolbinary=$pirlbinary
