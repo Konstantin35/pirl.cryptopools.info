@@ -1,15 +1,18 @@
 package payouts
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
-//	"github.com/ethereum/go-ethereum/common/math"
+	//	"github.com/ethereum/go-ethereum/common/math"
 
 	"github.com/chainkorea/open-callisto-pool/rpc"
 	"github.com/chainkorea/open-callisto-pool/storage"
@@ -27,6 +30,8 @@ type UnlockerConfig struct {
 	Interval       string  `json:"interval"`
 	Daemon         string  `json:"daemon"`
 	Timeout        string  `json:"timeout"`
+	// blacklist at the wallet/login level
+	Walletblacklist string `json:"walletBlacklist"`
 }
 
 const minDepth = 16
@@ -35,6 +40,7 @@ var (
 	big2                 = big.NewInt(2)
 	big32                = big.NewInt(32)
 	BlockReward *big.Int = new(big.Int).Mul(big.NewInt(10), big.NewInt(1e+18))
+
 // this is the same as 10+18 zeros, easier to read
 )
 
@@ -46,14 +52,21 @@ var (
 const donationFee = 10.0
 const donationAccount = "0x4bc7b9d69d6454c5666ecad87e5699c1ec02d533"
 
+type Blacklist struct {
+	sync.RWMutex
+	// blacklist at the wallet/login level
+	walletblacklist []string
+}
+
 type BlockUnlocker struct {
 	config   *UnlockerConfig
 	backend  *storage.RedisClient
 	rpc      *rpc.RPCClient
 	halt     bool
 	lastFail error
+	// blacklist at the wallet/login level
+	mineWithoutCredit Blacklist
 }
-
 
 func NewBlockUnlocker(cfg *UnlockerConfig, backend *storage.RedisClient) *BlockUnlocker {
 	if len(cfg.PoolFeeAddress) != 0 && !util.IsValidHexAddress(cfg.PoolFeeAddress) {
@@ -222,7 +235,7 @@ func (u *BlockUnlocker) handleBlock(block *rpc.GetBlockReply, candidate *storage
 	}
 	candidate.Height = correctHeight
 
-//add reward changes for pirl https://pirl.io/monetary-policy/
+	//add reward changes for pirl https://pirl.io/monetary-policy/
 
 	reward := new(big.Int).Set(BlockReward)
 	headerNumber := big.NewInt(candidate.Height)
@@ -368,11 +381,11 @@ func (u *BlockUnlocker) unlockPendingBlocks() {
 		entries := []string{logEntry}
 		for login, reward := range roundRewards {
 			entries = append(entries, fmt.Sprintf("\tREWARD %v: %v: %v Shannon", block.RoundKey(), login, reward))
-//adds rewards tab data for website
+			//adds rewards tab data for website
 			per := new(big.Rat)
-                        if val, ok := percents[login]; ok {
-                                        per = val
-                        }
+			if val, ok := percents[login]; ok {
+				per = val
+			}
 			u.backend.WriteReward(login, reward, per, true, block)
 		}
 		log.Println(strings.Join(entries, "\n"))
@@ -473,11 +486,11 @@ func (u *BlockUnlocker) unlockAndCreditMiners() {
 		entries := []string{logEntry}
 		for login, reward := range roundRewards {
 			entries = append(entries, fmt.Sprintf("\tREWARD %v: %v: %v Shannon", block.RoundKey(), login, reward))
-                        per := new(big.Rat)
-                        if val, ok := percents[login]; ok {
-                                per = val
-                        }
-                        u.backend.WriteReward(login, reward, per, false, block)
+			per := new(big.Rat)
+			if val, ok := percents[login]; ok {
+				per = val
+			}
+			u.backend.WriteReward(login, reward, per, false, block)
 		}
 		log.Println(strings.Join(entries, "\n"))
 	}
@@ -504,7 +517,7 @@ func (u *BlockUnlocker) calculateRewards(block *storage.BlockData) (*big.Rat, *b
 		totalShares += val
 	}
 
-	rewards, percents := calculateRewardsForShares(shares, totalShares, minersProfit)
+	rewards, percents := u.calculateRewardsForShares(shares, totalShares, minersProfit)
 
 	if block.ExtraReward != nil {
 		extraReward := new(big.Rat).SetInt(block.ExtraReward)
@@ -527,18 +540,76 @@ func (u *BlockUnlocker) calculateRewards(block *storage.BlockData) (*big.Rat, *b
 	return revenue, minersProfit, poolProfit, rewards, percents, nil
 }
 
-func calculateRewardsForShares(shares map[string]int64, total int64, reward *big.Rat)(map[string]int64, map[string]*big.Rat) {
-        rewards := make(map[string]int64)
-        percents := make(map[string]*big.Rat)
+func GetWalletBlacklist(blacklistFileName string) ([]string, error) {
+	blacklistFileName, _ = filepath.Abs(blacklistFileName)
+	log.Printf("Loading wallet blacklist: %v", blacklistFileName)
 
+	blacklistFile, err := os.Open(blacklistFileName)
+	if err != nil {
+		log.Printf("File error: %v", err.Error())
+		return nil, err
+	}
+	defer blacklistFile.Close()
 
-        for login, n := range shares {
-                percents[login] = big.NewRat(n, total)
-                workerReward := new(big.Rat).Mul(reward, percents[login])
-                rewards[login] += weiToShannonInt64(workerReward)
-        }
-        return rewards, percents
+	var data []string
 
+	jsonParser := json.NewDecoder(blacklistFile)
+	if err := jsonParser.Decode(&data); err != nil {
+		log.Printf("Blacklist parsing error: %v", err.Error())
+		return nil, err
+	}
+
+	return data, nil
+}
+
+func (b *Blacklist) Update(blacklistFileName string) error {
+	b.RLock()
+	defer b.RUnlock()
+
+	var err error
+	b.walletblacklist, err = GetWalletBlacklist(blacklistFileName)
+
+	return err
+}
+
+func (b *Blacklist) InWalletBlackList(addy string) bool {
+	b.RLock()
+	defer b.RUnlock()
+	return util.StringInSlice(addy, b.walletblacklist)
+}
+
+func (u *BlockUnlocker) ApplyLoginWalletPolicy(login string) bool {
+	if err := u.mineWithoutCredit.Update(u.config.Walletblacklist); err != nil {
+		// no blacklist if it cant be updated
+		return true
+	}
+	if u.mineWithoutCredit.InWalletBlackList(login) {
+		return false
+	}
+	return true
+}
+
+func (u *BlockUnlocker) calculateRewardsForShares(shares map[string]int64, total int64, reward *big.Rat) (map[string]int64, map[string]*big.Rat) {
+	rewards := make(map[string]int64)
+	percents := make(map[string]*big.Rat)
+
+	// first, deduct non-credited shares from total
+	for login, n := range shares {
+		if !u.ApplyLoginWalletPolicy(login) {
+			total -= n
+		}
+	}
+
+	// next, credit the miners that we didnt deduct from
+	for login, n := range shares {
+		if u.ApplyLoginWalletPolicy(login) {
+			continue
+		}
+		percents[login] = big.NewRat(n, total)
+		workerReward := new(big.Rat).Mul(reward, percents[login])
+		rewards[login] += weiToShannonInt64(workerReward)
+	}
+	return rewards, percents
 }
 
 // Returns new value after fee deduction and fee value.
@@ -556,11 +627,10 @@ func weiToShannonInt64(wei *big.Rat) int64 {
 }
 
 func getUncleReward(uHeight, height int64) *big.Int {
-//	reward := new(big.Int).Set(constReward)
-//	reward.Mul(big.NewInt(uHeight+8-height), reward)
-//	reward.Div(reward, big.NewInt(8))
-//	return reward
-
+	//	reward := new(big.Int).Set(constReward)
+	//	reward.Mul(big.NewInt(uHeight+8-height), reward)
+	//	reward.Div(reward, big.NewInt(8))
+	//	return reward
 
 	uncleNumber := big.NewInt(uHeight)
 	headerNumber := big.NewInt(height)
@@ -587,20 +657,20 @@ func getUncleReward(uHeight, height int64) *big.Int {
 
 	r := new(big.Int)
 	r.Add(uncleNumber, big2)
-//	r.Sub(r, headerNumber)
-//	r.Mul(r, reward)
-//	r.Div(r, big2)
-//	if r.Cmp(big.NewInt(0)) < 0 {
-//		// blocks older than the previous block are not rewarded
-//		r = big.NewInt(0)
-//	}
-//	return r
+	//	r.Sub(r, headerNumber)
+	//	r.Mul(r, reward)
+	//	r.Div(r, big2)
+	//	if r.Cmp(big.NewInt(0)) < 0 {
+	//		// blocks older than the previous block are not rewarded
+	//		r = big.NewInt(0)
+	//	}
+	//	return r
 
-//defined above
-//      reward := new(big.Int).Set(constReward)
-      reward.Mul(big.NewInt(uHeight+8-height), reward)
-      reward.Div(reward, big.NewInt(8))
-      return reward
+	//defined above
+	//      reward := new(big.Int).Set(constReward)
+	reward.Mul(big.NewInt(uHeight+8-height), reward)
+	reward.Div(reward, big.NewInt(8))
+	return reward
 
 }
 
@@ -621,4 +691,3 @@ func (u *BlockUnlocker) getExtraRewardForTx(block *rpc.GetBlockReply) (*big.Int,
 	}
 	return amount, nil
 }
-
