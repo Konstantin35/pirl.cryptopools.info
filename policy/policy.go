@@ -1,9 +1,12 @@
 package policy
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,6 +22,7 @@ type Config struct {
 	Limits          Limits  `json:"limits"`
 	ResetInterval   string  `json:"resetInterval"`
 	RefreshInterval string  `json:"refreshInterval"`
+	Walletblacklist string  `json:"walletBlacklist"`
 }
 
 type Limits struct {
@@ -62,6 +66,8 @@ type PolicyServer struct {
 	blacklist  []string
 	whitelist  []string
 	storage    *storage.RedisClient
+	// blacklist at the wallet/login level
+	walletblacklist []string
 }
 
 func Start(cfg *Config, storage *storage.RedisClient) *PolicyServer {
@@ -142,6 +148,29 @@ func (s *PolicyServer) resetStats() {
 	log.Printf("Flushed stats for %v IP addresses", total)
 }
 
+func (s *PolicyServer) GetWalletBlacklist() ([]string, error) {
+	blacklistFileName := s.config.Walletblacklist
+	blacklistFileName, _ = filepath.Abs(blacklistFileName)
+	log.Printf("Loading wallet blacklist: %v", blacklistFileName)
+
+	blacklistFile, err := os.Open(blacklistFileName)
+	if err != nil {
+		log.Printf("File error: %v", err.Error())
+		return nil, err
+	}
+	defer blacklistFile.Close()
+
+	var data []string
+
+	jsonParser := json.NewDecoder(blacklistFile)
+	if err := jsonParser.Decode(&data); err != nil {
+		log.Printf("Blacklist parsing error: %v", err.Error())
+		return nil, err
+	}
+
+	return data, nil
+}
+
 func (s *PolicyServer) refreshState() {
 	s.Lock()
 	defer s.Unlock()
@@ -154,6 +183,10 @@ func (s *PolicyServer) refreshState() {
 	s.whitelist, err = s.storage.GetWhitelist()
 	if err != nil {
 		log.Printf("Failed to get whitelist from backend: %v", err)
+	}
+	s.walletblacklist, err = s.GetWalletBlacklist()
+	if err != nil {
+		log.Printf("Failed to get wallet/login blacklist from backend: %v", err)
 	}
 	log.Println("Policy state refresh complete")
 }
@@ -197,6 +230,13 @@ func (s *PolicyServer) ApplyLimitPolicy(ip string) bool {
 	now := util.MakeTimestamp()
 	if now-s.startedAt > s.grace {
 		return s.Get(ip).decrLimit() > 0
+	}
+	return true
+}
+
+func (s *PolicyServer) ApplyLoginWalletPolicy(login string) bool {
+	if s.InWalletBlackList(login) {
+		return false
 	}
 	return true
 }
@@ -282,6 +322,12 @@ func (x *Stats) incrMalformed() int32 {
 
 func (x *Stats) decrLimit() int32 {
 	return atomic.AddInt32(&x.ConnLimit, -1)
+}
+
+func (s *PolicyServer) InWalletBlackList(addy string) bool {
+	s.RLock()
+	defer s.RUnlock()
+	return util.StringInSlice(addy, s.walletblacklist)
 }
 
 func (s *PolicyServer) InBlackList(addy string) bool {

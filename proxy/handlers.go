@@ -28,6 +28,10 @@ func (s *ProxyServer) handleLoginRPC(cs *Session, params []string, id string) (b
 	if !s.policy.ApplyLoginPolicy(login, cs.ip) {
 		return false, &ErrorReply{Code: -1, Message: "You are blacklisted"}
 	}
+	if !s.policy.ApplyLoginWalletPolicy(login) {
+		// check to see if this wallet login is blocked
+		return false, &ErrorReply{Code: -1, Message: "You are blacklisted"}
+	}
 	cs.login = login
 	s.registerSession(cs)
 	log.Printf("Stratum miner connected %v@%v", login, cs.ip)

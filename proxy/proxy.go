@@ -229,6 +229,12 @@ func (cs *Session) handleMessage(s *ProxyServer, r *http.Request, req *JSONRpcRe
 		cs.sendError(req.Id, errReply)
 		return
 	}
+	if !s.policy.ApplyLoginWalletPolicy(login) {
+		// check to see if this wallet login is blocked
+		errReply := &ErrorReply{Code: -1, Message: "You are blacklisted"}
+		cs.sendError(req.Id, errReply)
+		return
+	}
 
 	// Handle RPC methods
 	switch req.Method {
